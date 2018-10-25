@@ -224,6 +224,14 @@ include $(BUILD_SYSTEM)/envsetup.mk
 # See envsetup.mk for a description of SCAN_EXCLUDE_DIRS
 FIND_LEAVES_EXCLUDES := $(addprefix --prune=, $(SCAN_EXCLUDE_DIRS) .repo .git)
 
+# General entries for project pathmap.  Any entries listed here should
+# be device and hardware independent.
+$(call project-set-path-variant,ril,TARGET_RIL_VARIANT,hardware/ril)
+
+ifneq ($(BLISS_BUILD),)
+include vendor/bliss/config/BoardConfigBliss.mk
+endif
+
 # The build system exposes several variables for where to find the kernel
 # headers:
 #   TARGET_DEVICE_KERNEL_HEADERS is automatically created for the current
@@ -549,8 +557,9 @@ prebuilt_sdk_tools_bin := $(prebuilt_sdk_tools)/$(HOST_OS)/bin
 prebuilt_build_tools := prebuilts/build-tools
 prebuilt_build_tools_wrappers := prebuilts/build-tools/common/bin
 prebuilt_build_tools_jars := prebuilts/build-tools/common/framework
+prebuilt_build_tools_bin_noasan := $(prebuilt_build_tools)/$(HOST_PREBUILT_TAG)/bin
 ifeq ($(filter address,$(SANITIZE_HOST)),)
-prebuilt_build_tools_bin := $(prebuilt_build_tools)/$(HOST_PREBUILT_TAG)/bin
+prebuilt_build_tools_bin := $(prebuilt_build_tools_bin_noasan)
 else
 prebuilt_build_tools_bin := $(prebuilt_build_tools)/$(HOST_PREBUILT_TAG)/asan/bin
 endif
@@ -619,13 +628,13 @@ ZIPTIME := $(prebuilt_build_tools_bin)/ziptime
 # ---------------------------------------------------------------
 # Generic tools.
 
-LEX := prebuilts/misc/$(BUILD_OS)-$(HOST_PREBUILT_ARCH)/flex/flex-2.5.39
+LEX := $(prebuilt_build_tools_bin_noasan)/flex
 # The default PKGDATADIR built in the prebuilt bison is a relative path
 # prebuilts/build-tools/common/bison.
 # To run bison from elsewhere you need to set up enviromental variable
 # BISON_PKGDATADIR.
 BISON_PKGDATADIR := $(PWD)/prebuilts/build-tools/common/bison
-BISON := prebuilts/build-tools/$(BUILD_OS)-$(HOST_PREBUILT_ARCH)/bin/bison
+BISON := $(prebuilt_build_tools_bin_noasan)/bison
 YACC := $(BISON) -d
 BISON_DATA := $(wildcard $(BISON_PKGDATADIR)/* $(BISON_PKGDATADIR)/*/*)
 
@@ -681,7 +690,6 @@ JARJAR := $(HOST_OUT_JAVA_LIBRARIES)/jarjar.jar
 DATA_BINDING_COMPILER := $(HOST_OUT_JAVA_LIBRARIES)/databinding-compiler.jar
 FAT16COPY := build/make/tools/fat16copy.py
 CHECK_LINK_TYPE := build/make/tools/check_link_type.py
-UUIDGEN := build/make/tools/uuidgen.py
 
 PROGUARD := external/proguard/bin/proguard.sh
 JAVATAGS := build/make/tools/java-event-log-tags.py
@@ -927,59 +935,6 @@ PLATFORM_SEPOLICY_COMPAT_VERSIONS := \
     PLATFORM_SEPOLICY_VERSION \
     TOT_SEPOLICY_VERSION \
 
-# If true, kernel configuration requirements are present in OTA package (and will be enforced
-# during OTA). Otherwise, kernel configuration requirements are enforced in VTS.
-# Devices that checks the running kernel (instead of the kernel in OTA package) should not
-# set this variable to prevent OTA failures.
-ifndef PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS
-  PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS :=
-  ifdef PRODUCT_SHIPPING_API_LEVEL
-    ifeq (true,$(call math_gt_or_eq,$(PRODUCT_SHIPPING_API_LEVEL),29))
-      PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS := true
-    endif
-  endif
-endif
-.KATI_READONLY := PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS
-
-ifeq ($(USE_LOGICAL_PARTITIONS),true)
-    requirements := \
-        PRODUCT_USE_DYNAMIC_PARTITION_SIZE \
-        PRODUCT_BUILD_SUPER_PARTITION \
-        PRODUCT_USE_FASTBOOTD \
-
-    $(foreach req,$(requirements),$(if $(filter false,$($(req))),\
-        $(error USE_LOGICAL_PARTITIONS requires $(req) to be true)))
-
-    requirements :=
-
-  BOARD_KERNEL_CMDLINE += androidboot.logical_partitions=1
-endif
-
-ifeq ($(PRODUCT_USE_DYNAMIC_PARTITION_SIZE),true)
-
-ifneq ($(BOARD_SYSTEMIMAGE_PARTITION_SIZE),)
-ifneq ($(BOARD_SYSTEMIMAGE_PARTITION_RESERVED_SIZE),)
-$(error Should not define BOARD_SYSTEMIMAGE_PARTITION_SIZE and \
-    BOARD_SYSTEMIMAGE_PARTITION_RESERVED_SIZE together)
-endif
-endif
-
-ifneq ($(BOARD_VENDORIMAGE_PARTITION_SIZE),)
-ifneq ($(BOARD_VENDORIMAGE_PARTITION_RESERVED_SIZE),)
-$(error Should not define BOARD_VENDORIMAGE_PARTITION_SIZE and \
-    BOARD_VENDORIMAGE_PARTITION_RESERVED_SIZE together)
-endif
-endif
-
-ifneq ($(BOARD_PRODUCTIMAGE_PARTITION_SIZE),)
-ifneq ($(BOARD_PRODUCTIMAGE_PARTITION_RESERVED_SIZE),)
-$(error Should not define BOARD_PRODUCTIMAGE_PARTITION_SIZE and \
-    BOARD_PRODUCTIMAGE_PARTITION_RESERVED_SIZE together)
-endif
-endif
-
-endif # PRODUCT_USE_DYNAMIC_PARTITION_SIZE
-
 # ###############################################################
 # Set up final options.
 # ###############################################################
@@ -1137,6 +1092,15 @@ dont_bother_goals := out \
 ifeq ($(CALLED_FROM_SETUP),true)
 include $(BUILD_SYSTEM)/ninja_config.mk
 include $(BUILD_SYSTEM)/soong_config.mk
+endif
+
+ifneq ($(BLISS_BUILD),)
+## We need to be sure the global selinux policies are included
+## last, to avoid accidental resetting by device configs
+#$(eval include device/lineage/sepolicy/common/sepolicy.mk)
+#endif
+# Include any vendor specific config.mk file
+-include $(TOPDIR)vendor/bliss/build/core/config.mk
 endif
 
 include $(BUILD_SYSTEM)/dumpvar.mk

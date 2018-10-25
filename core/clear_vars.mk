@@ -453,6 +453,7 @@ LOCAL_STATIC_LIBRARIES_32:=
 LOCAL_STATIC_LIBRARIES_64:=
 LOCAL_WHOLE_STATIC_LIBRARIES_32:=
 LOCAL_WHOLE_STATIC_LIBRARIES_64:=
+LOCAL_PROTOC_OUTPUT:=
 
 # Robolectric variables
 LOCAL_INSTRUMENT_SOURCE_DIRS :=
@@ -471,6 +472,9 @@ LOCAL_AUX_TOOLCHAIN :=
 LOCAL_CUSTOM_BUILD_STEP_INPUT:=
 LOCAL_CUSTOM_BUILD_STEP_OUTPUT:=
 LOCAL_IS_AUX_MODULE :=
+
+# Include any vendor specific clear_vars.mk file
+-include vendor/*/build/core/clear_vars.mk
 
 # Trim MAKEFILE_LIST so that $(call my-dir) doesn't need to
 # iterate over thousands of entries every time.

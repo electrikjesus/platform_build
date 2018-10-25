@@ -194,10 +194,10 @@ def LoadInfoDict(input_file, input_dir=None):
     if fc_config:
       d["selinux_fc"] = fc_config
 
-    # Similarly we need to redirect "root_dir" and "root_fs_config".
+    # Similarly we need to redirect "ramdisk_dir" and "ramdisk_fs_config".
     if d.get("system_root_image") == "true":
-      d["root_dir"] = os.path.join(input_dir, "ROOT")
-      d["root_fs_config"] = os.path.join(
+      d["ramdisk_dir"] = os.path.join(input_dir, "ROOT")
+      d["ramdisk_fs_config"] = os.path.join(
           input_dir, "META", "root_filesystem_config.txt")
 
     # Redirect {system,vendor}_base_fs_file.
@@ -438,6 +438,21 @@ def _BuildBootableImage(sourcedir, fs_config_file, info_dict=None,
   if os.access(fn, os.F_OK):
     cmd.append("--pagesize")
     cmd.append(open(fn).read().rstrip("\n"))
+
+  fn = os.path.join(sourcedir, "tagsaddr")
+  if os.access(fn, os.F_OK):
+    cmd.append("--tags-addr")
+    cmd.append(open(fn).read().rstrip("\n"))
+
+  fn = os.path.join(sourcedir, "ramdisk_offset")
+  if os.access(fn, os.F_OK):
+    cmd.append("--ramdisk_offset")
+    cmd.append(open(fn).read().rstrip("\n"))
+
+  fn = os.path.join(sourcedir, "dt")
+  if os.access(fn, os.F_OK):
+    cmd.append("--dt")
+    cmd.append(fn)
 
   args = info_dict.get("mkbootimg_args", None)
   if args and args.strip():
@@ -1774,7 +1789,10 @@ PARTITION_TYPES = {
     "ext4": "EMMC",
     "emmc": "EMMC",
     "f2fs": "EMMC",
-    "squashfs": "EMMC"
+    "squashfs": "EMMC",
+    "ext2": "EMMC",
+    "ext3": "EMMC",
+    "vfat": "EMMC"
 }
 
 def GetTypeAndDevice(mount_point, info):
@@ -1852,6 +1870,7 @@ def MakeRecoveryPatch(input_dir, output_sink, recovery_img, boot_img,
     info_dict = OPTIONS.info_dict
 
   full_recovery_image = info_dict.get("full_recovery_image") == "true"
+  use_bsdiff = info_dict.get("no_gzip_recovery_ramdisk") == "true"
 
   if full_recovery_image:
     output_sink("etc/recovery.img", recovery_img.data)
@@ -1862,7 +1881,7 @@ def MakeRecoveryPatch(input_dir, output_sink, recovery_img, boot_img,
     # With system-root-image, boot and recovery images will have mismatching
     # entries (only recovery has the ramdisk entry) (Bug: 72731506). Use bsdiff
     # to handle such a case.
-    if system_root_image:
+    if system_root_image or use_bsdiff:
       diff_program = ["bsdiff"]
       bonus_args = ""
       assert not os.path.exists(path)

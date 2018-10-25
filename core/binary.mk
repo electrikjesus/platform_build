@@ -33,6 +33,22 @@ endif
 
 my_soong_problems :=
 
+# The proper dependency for kernel headers is INSTALLED_KERNEL_HEADERS.
+# However, there are many instances of the old style dependencies in the
+# source tree.  Fix them up and warn the user.
+ifneq (,$(findstring $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr,$(LOCAL_ADDITIONAL_DEPENDENCIES)))
+  LOCAL_ADDITIONAL_DEPENDENCIES := $(patsubst $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr,INSTALLED_KERNEL_HEADERS,$(LOCAL_ADDITIONAL_DEPENDENCIES))
+endif
+
+# Many qcom modules don't correctly set a dependency on the kernel headers. Fix it for them,
+# but warn the user.
+ifneq (,$(findstring $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include,$(LOCAL_C_INCLUDES)))
+  ifeq (,$(findstring INSTALLED_KERNEL_HEADERS,$(LOCAL_ADDITIONAL_DEPENDENCIES)))
+    $(warning $(LOCAL_MODULE) uses kernel headers, but does not depend on them!)
+    LOCAL_ADDITIONAL_DEPENDENCIES += INSTALLED_KERNEL_HEADERS
+  endif
+endif
+
 # The following LOCAL_ variables will be modified in this file.
 # Because the same LOCAL_ variables may be used to define modules for both 1st arch and 2nd arch,
 # we can't modify them in place.
@@ -857,13 +873,25 @@ my_proto_c_includes += $(proto_gen_dir)
 proto_generated_cpps := $(addprefix $(proto_gen_dir)/, \
     $(patsubst %.proto,%.pb$(my_proto_source_suffix),$(proto_sources_fullpath)))
 
+define copy-proto-files
+$(if $(PRIVATE_PROTOC_OUTPUT), \
+   $(if $(call streq,$(PRIVATE_PROTOC_INPUT),$(PRIVATE_PROTOC_OUTPUT)),, \
+   $(eval proto_generated_path := $(dir $(subst $(PRIVATE_PROTOC_INPUT),$(PRIVATE_PROTOC_OUTPUT),$@)))
+   @mkdir -p $(dir $(proto_generated_path))
+   @echo "Protobuf relocation: $(basename $@).h => $(proto_generated_path)"
+   @cp -f $(basename $@).h $(proto_generated_path) ),)
+endef
+
 # Ensure the transform-proto-to-cc rule is only defined once in multilib build.
 ifndef $(my_host)$(LOCAL_MODULE_CLASS)_$(LOCAL_MODULE)_proto_defined
 $(proto_generated_cpps): PRIVATE_PROTO_INCLUDES := $(TOP)
 $(proto_generated_cpps): PRIVATE_PROTOC_FLAGS := $(LOCAL_PROTOC_FLAGS) $(my_protoc_flags)
+$(proto_generated_cpps): PRIVATE_PROTOC_OUTPUT := $(LOCAL_PROTOC_OUTPUT)
+$(proto_generated_cpps): PRIVATE_PROTOC_INPUT := $(LOCAL_PATH)
 $(proto_generated_cpps): PRIVATE_RENAME_CPP_EXT := $(my_rename_cpp_ext)
 $(proto_generated_cpps): $(proto_gen_dir)/%.pb$(my_proto_source_suffix): %.proto $(my_protoc_deps) $(PROTOC)
 	$(transform-proto-to-cc)
+	$(copy-proto-files)
 
 $(my_host)$(LOCAL_MODULE_CLASS)_$(LOCAL_MODULE)_proto_defined := true
 endif
@@ -1474,6 +1502,11 @@ $(foreach f,$(my_tracked_gen_files),$(eval my_src_file_gen_$(s):=))
 my_tracked_gen_files :=
 $(foreach f,$(my_tracked_src_files),$(eval my_src_file_obj_$(s):=))
 my_tracked_src_files :=
+
+## Allow a device's own headers to take precedence over global ones
+ifneq ($(TARGET_SPECIFIC_HEADER_PATH),)
+my_c_includes := $(TOPDIR)$(TARGET_SPECIFIC_HEADER_PATH) $(my_c_includes)
+endif
 
 my_c_includes += $(TOPDIR)$(LOCAL_PATH) $(intermediates) $(generated_sources_dir)
 

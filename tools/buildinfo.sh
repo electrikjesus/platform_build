@@ -61,4 +61,9 @@ if [ -n "$BUILD_THUMBPRINT" ] ; then
 fi
 echo "ro.build.characteristics=$TARGET_AAPT_CHARACTERISTICS"
 
+echo "ro.bliss.device=$BLISS_DEVICE"
+echo "ro.bliss.product.arch=$BLISS_TARGET_ARCH"
+echo "ro.bliss.version=$BLISS_DISPLAY_VERSION"
+echo "ro.bliss.build.status=$BLISS_BUILDTYPE"
+
 echo "# end build properties"
